@@ -1,16 +1,16 @@
 // MUI Imports
 import Grid from '@mui/material/Grid'
 
-import Table from '@/views/dashboard/Table'
+import userApiRequest from '@/app/apiRequests/user'
 
-// Component Imports
+import TableList from '@/views/dashboard/TableList'
 
-const ListMember = () => {
+export default async function ListMember() {
+  const usersData = await userApiRequest.getAll()
+
   return (
     <Grid item xs={12}>
-      <Table />
+      <TableList usersData={usersData} />
     </Grid>
   )
 }
-
-export default ListMember

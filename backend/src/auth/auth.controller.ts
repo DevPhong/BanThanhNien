@@ -5,53 +5,94 @@ import {
   Get,
   Post,
   Req,
-  Request,
+  Res,
+  UseFilters,
   UseGuards,
 } from '@nestjs/common';
 import { AuthService } from 'src/auth/auth.service';
-import { LoginDto } from 'src/auth/dto/login.dto';
-import { ERRORS_DICTIONARY } from 'src/constraints/error-dictionary.constraint';
-import { AuthGuard } from 'src/guards/auth.guard';
-import { RegisterDto } from 'src/auth/dto/register.dto';
-import { RegisterEntity } from 'src/auth/entity/register.entity';
-import { LoginEntity } from 'src/auth/entity/login.entity';
+import { LoginRequestDto, LoginResponseDto } from 'src/auth/dto/login.dto';
+import {
+  RegisterRequestDto,
+  RegisterResponseDto,
+} from 'src/auth/dto/register.dto';
 import { JwtAuthGuard } from 'src/guards/jwt/jwt-auth.guard';
+import express from 'express';
+import { LocalAuthGuard } from 'src/guards/local-auth.guard';
+import { ResetRequestDto } from 'src/auth/dto/reset.dto';
+import { ForgotDto } from 'src/auth/dto/forgot.dto';
 
 @Controller('auth')
 export class AuthController {
   constructor(private readonly authService: AuthService) {}
 
   @Post('register')
-  signUp(@Body() registerDto: RegisterDto): Promise<RegisterEntity> {
-    return this.authService.register(registerDto);
+  async register(
+    @Body() registerBody: RegisterRequestDto,
+  ): Promise<RegisterResponseDto | BadRequestException> {
+    return await this.authService.register(registerBody);
   }
 
+  @UseGuards(LocalAuthGuard)
   @Post('login')
-  login(@Body() loginDto: LoginDto): Promise<LoginEntity> {
-    return this.authService.login(loginDto);
+  async login(
+    @Req() req: express.Request,
+    @Res({ passthrough: true }) res: express.Response,
+    @Body() dtoLogin: LoginRequestDto,
+  ): Promise<LoginResponseDto | BadRequestException> {
+    return await this.authService.login(dtoLogin, res);
   }
 
-  @UseGuards(AuthGuard, JwtAuthGuard)
-  @Post('slide-session')
-  async slideSession(@Body() refreshToken: string) {
-    return this.authService.slideSession(refreshToken);
-  }
-
-  @UseGuards(AuthGuard, JwtAuthGuard)
+  @UseGuards(JwtAuthGuard)
   @Post('logout')
-  logout(@Req() req: Request) {
-    const sessionToken = req.headers['authorization']?.split(' ')[1];
-    if (!sessionToken) {
-      throw new BadRequestException({
-        message: ERRORS_DICTIONARY.NOT_ACCESS_TOKEN,
-      });
+  async logout(
+    @Req() req: express.Request,
+    @Res({ passthrough: true }) res: express.Response,
+  ) {
+    const token = req.cookies?.refreshToken || req.headers['x-refresh-token'];
+    if (token) {
+      await this.authService.revokeSession(token as string);
     }
-    return this.authService.logout(sessionToken as string);
+    res.clearCookie('refreshToken', { path: '/' });
+    return { message: 'Logged out' };
   }
 
-  @UseGuards(AuthGuard, JwtAuthGuard)
+  @Post('forgot')
+  async forgot(@Body() dto: ForgotDto) {
+    const reset = await this.authService.createPasswordReset(dto.email);
+    return { message: 'ok', resetToken: reset.token };
+  }
+
+  @Post('reset')
+  async reset(@Body() resetDto: ResetRequestDto) {
+    await this.authService.usePasswordReset(
+      resetDto.token,
+      resetDto.newPassword,
+    );
+    return { message: 'Password updated' };
+  }
+
+  @Post('refresh')
+  async refresh(
+    @Req() req: express.Request,
+    @Res({ passthrough: true }) res: express.Response,
+  ) {
+    const token = req.cookies?.refreshToken || req.headers['x-refresh-token'];
+    if (!token) throw new Error('No refresh token');
+
+    const { accessToken, user } = await this.authService.refreshAccessToken(
+      token,
+      true,
+      res,
+    );
+    return {
+      accessToken,
+      user: { id: user.id, email: user.email, name: user.name },
+    };
+  }
+
+  @UseGuards(JwtAuthGuard)
   @Get('me')
-  async getMe(@Request() req: Request) {
-    return this.authService.getMe(req);
+  me(@Req() req: express.Request) {
+    return req.user;
   }
 }

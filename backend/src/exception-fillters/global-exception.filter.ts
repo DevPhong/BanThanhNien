@@ -4,15 +4,14 @@ import {
   ExceptionFilter,
   HttpException,
 } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
 import { Response } from 'express';
 
-@Catch()
+@Catch(HttpException)
 export class GlobalExceptionFilter implements ExceptionFilter {
-  constructor(private readonly config_service: ConfigService) {}
   catch(exception: any, host: ArgumentsHost) {
     const ctx = host.switchToHttp();
     const response = ctx.getResponse<Response>();
+    const request = ctx.getRequest<Request>();
 
     const status =
       exception instanceof HttpException ? exception.getStatus() : 500;
@@ -21,16 +20,12 @@ export class GlobalExceptionFilter implements ExceptionFilter {
       exception instanceof HttpException
         ? exception.message
         : 'Internal server error';
+
     response.status(status).json({
+      path: request.url,
       statusCode: status,
       message,
-      error:
-        this.config_service.get('NODE_ENV') !== 'production'
-          ? {
-              response: exception.response,
-              stack: exception.stack,
-            }
-          : null,
+      timestamp: new Date().toISOString(),
     });
   }
 }

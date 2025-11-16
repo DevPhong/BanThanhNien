@@ -21,7 +21,7 @@ export class UpdateProfileDto {
 
   @ApiProperty({
     description: 'Date of birth of the profile owner',
-    example: '1990-01-01',
+    example: '12-05-1990',
     required: true,
   })
   @IsOptional()

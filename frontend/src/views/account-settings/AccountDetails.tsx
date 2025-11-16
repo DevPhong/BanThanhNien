@@ -1,8 +1,12 @@
 'use client'
 
 // React Imports
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import type { ChangeEvent } from 'react'
+
+import { useRouter } from 'next/navigation'
+
+import { Controller, useForm } from 'react-hook-form'
 
 // MUI Imports
 import Grid from '@mui/material/Grid'
@@ -11,6 +15,7 @@ import CardContent from '@mui/material/CardContent'
 import Button from '@mui/material/Button'
 import TextField from '@mui/material/TextField'
 import { CardHeader } from '@mui/material'
+import InputMask from 'react-input-mask'
 
 import Dialog from '@mui/material/Dialog'
 import DialogTitle from '@mui/material/DialogTitle'
@@ -19,56 +24,77 @@ import DialogContentText from '@mui/material/DialogContentText'
 import DialogActions from '@mui/material/DialogActions'
 
 import OptionMenu from '@/@core/components/option-menu'
+import { formatDate } from '@/app/lib/utils'
 
-type Data = {
-  fullName?: string
-  lastName?: string
-  email?: string
-  phoneNumber?: string
-  address?: string
-  dateOfBirth?: string
-  joinDate?: string
-}
-
-// Vars
-const initialData: Data = {
-  fullName: 'John Doe',
-  lastName: 'Doe',
-  email: 'john.doe@example.com',
-  phoneNumber: '+1 (917) 543-9876',
-  address: '123 Main St, New York, NY 10001',
-  dateOfBirth: '1990-01-01',
-  joinDate: '2020-01-01'
-}
-
-const AccountDetails = () => {
+const AccountDetails = ({ profile }: any) => {
   // States
 
-  const [formData, setFormData] = useState<Data>(initialData)
-  const [fileInput, setFileInput] = useState<string>('')
+  const router = useRouter()
+  const [fileInput, setFileInput] = useState<File | null>(null)
   const [imgSrc, setImgSrc] = useState<string>('/images/avatars/1.png')
   const [openDeleteDialog, setOpenDeleteDialog] = useState(false)
 
-  const handleFormChange = (field: keyof Data, value: Data[keyof Data]) => {
-    setFormData({ ...formData, [field]: value })
-  }
+  const [loading, setLoading] = useState(false)
 
-  const handleFileInputChange = (file: ChangeEvent) => {
-    const reader = new FileReader()
-    const { files } = file.target as HTMLInputElement
-
-    if (files && files.length !== 0) {
-      reader.onload = () => setImgSrc(reader.result as string)
-      reader.readAsDataURL(files[0])
-
-      if (reader.result !== null) {
-        setFileInput(reader.result as string)
+  const {
+    control,
+    handleSubmit,
+    reset,
+    setValue,
+    formState: { isDirty }
+  } = useForm({
+    defaultValues: {
+      name: '',
+      email: '',
+      profile: {
+        fullName: '',
+        phone: '',
+        address: '',
+        dateOfBirth: '',
+        joinDate: '',
+        avatarUrl: ''
       }
     }
+  })
+
+  // Load form when user loaded
+  useEffect(() => {
+    if (!profile) return
+
+    const p = profile.profile || {}
+
+    reset({
+      name: profile.name,
+      email: profile.email,
+      profile: {
+        fullName: p.fullName,
+        phone: p.phone,
+        address: p.address,
+        dateOfBirth: formatDate(p.dateOfBirth),
+        joinDate: formatDate(p.joinDate),
+        avatarUrl: ''
+      }
+    })
+  }, [profile, reset])
+
+  const handleFileInputChange = (e: ChangeEvent<HTMLInputElement>) => {
+    const selectedFile = e.target.files?.[0]
+
+    if (!selectedFile) return
+
+    setFileInput(selectedFile)
+
+    // preview
+    const reader = new FileReader()
+
+    reader.onload = () => setImgSrc(reader.result as string)
+    reader.readAsDataURL(selectedFile)
+
+    setValue('profile.avatarUrl', 'test', { shouldDirty: true })
   }
 
   const handleFileInputReset = () => {
-    setFileInput('')
+    setFileInput(null)
     setImgSrc('/images/avatars/1.png')
   }
 
@@ -81,14 +107,55 @@ const AccountDetails = () => {
 
   const handleConfirmDelete = () => {
     setOpenDeleteDialog(false)
-
-    // Thực hiện logic xóa ở đây
   }
+
+  // Submit data
+  const onSubmit = async (data: any) => {
+    let uploadedUrl = data.profile.avatarUrl
+
+    if (fileInput) {
+      const result = await handleUpload()
+
+      console.log('res', result)
+
+      uploadedUrl = result.url
+    }
+
+    // Gán vào payload
+    data.profile.avatarUrl = uploadedUrl
+
+    console.log('Final submit data:', data)
+  }
+
+  const handleUpload = async () => {
+    if (!fileInput) return
+
+    const formData = new FormData()
+
+    formData.append('file', fileInput)
+
+    setLoading(true)
+
+    const res = await fetch('/api/upload', {
+      method: 'POST',
+      body: formData
+    })
+
+    console.log('resss', res)
+
+    const data = await res.json()
+
+    setLoading(false)
+
+    return data
+  }
+
+  console.log(fileInput)
 
   return (
     <Card>
       <CardHeader
-        title='Đăng ký thành viên'
+        title={`${profile ? 'Thông tin thành viên' : 'Thêm thành viên'}`}
         action={
           <OptionMenu
             iconClassName='text-textPrimary'
@@ -121,7 +188,6 @@ const AccountDetails = () => {
                 <input
                   hidden
                   type='file'
-                  value={fileInput}
                   accept='image/png, image/jpeg, image/jpg'
                   onChange={handleFileInputChange}
                   id='account-settings-upload-image'
@@ -135,89 +201,65 @@ const AccountDetails = () => {
         </div>
       </CardContent>
       <CardContent>
-        <form onSubmit={e => e.preventDefault()}>
+        <form onSubmit={handleSubmit(onSubmit)}>
           <Grid container spacing={5}>
             <Grid item xs={12} sm={6}>
-              <TextField
-                fullWidth
-                label='Họ và tên'
-                value={formData.fullName}
-                placeholder='John Doe'
-                onChange={e => handleFormChange('fullName', e.target.value)}
+              <Controller
+                name='profile.fullName'
+                control={control}
+                render={({ field }) => <TextField {...field} fullWidth label='Họ và tên' />}
               />
             </Grid>
             <Grid item xs={12} sm={6}>
-              <TextField
-                fullWidth
-                label='Tên'
-                value={formData.lastName}
-                placeholder='Doe'
-                onChange={e => handleFormChange('lastName', e.target.value)}
+              <Controller
+                name='name'
+                control={control}
+                render={({ field }) => <TextField {...field} fullWidth label='Họ và tên' />}
               />
             </Grid>
             <Grid item xs={12} sm={6}>
-              <TextField
-                fullWidth
-                label='Email'
-                value={formData.email}
-                placeholder='john.doe@gmail.com'
-                onChange={e => handleFormChange('email', e.target.value)}
+              <Controller
+                name='email'
+                control={control}
+                render={({ field }) => <TextField {...field} fullWidth label='Email' />}
               />
             </Grid>
             <Grid item xs={12} sm={6}>
-              <TextField
-                fullWidth
-                label='Mật khẩu'
-                value={'12345678'}
-                placeholder='Nhập mật khẩu'
-
-                // onChange={e => handleFormChange('password', e.target.value)}
-              />
-            </Grid>
-            <Grid item xs={12} sm={6}>
-              <TextField
-                fullWidth
-                label='Số điện thoại'
-                value={formData.phoneNumber}
-                placeholder='+1 (234) 567-8901'
-                onChange={e => handleFormChange('phoneNumber', e.target.value)}
-              />
-            </Grid>
-            <Grid item xs={12} sm={6}>
-              <TextField
-                fullWidth
-                label='Địa chỉ hiện tại'
-                value={formData.address}
-                placeholder='Địa chỉ'
-                onChange={e => handleFormChange('address', e.target.value)}
+              <Controller
+                name='profile.phone'
+                control={control}
+                render={({ field }) => (
+                  <InputMask {...field} mask='999 9999 9999' maskChar=''>
+                    {(inputProps: any) => <TextField {...inputProps} fullWidth label='Số điện thoại' />}
+                  </InputMask>
+                )}
               />
             </Grid>
 
             <Grid item xs={12} sm={6}>
-              <TextField
-                fullWidth
-                label='Ngày sinh'
-                type='date'
-                value={formData.dateOfBirth} // ví dụ: '2021-01-14'
-                onChange={e => handleFormChange('dateOfBirth', e.target.value)}
-                InputLabelProps={{ shrink: true }} // Giữ label nổi khi có giá trị
+              <Controller
+                name='profile.dateOfBirth'
+                control={control}
+                render={({ field }) => (
+                  <TextField {...field} fullWidth label='Ngày sinh' type='date' InputLabelProps={{ shrink: true }} />
+                )}
               />
             </Grid>
             <Grid item xs={12} sm={6}>
-              <TextField
-                fullWidth
-                label='Ngày vào BTN'
-                value={formData.joinDate} // ví dụ: '2021-01-14'
-                onChange={e => handleFormChange('joinDate', e.target.value)}
-                InputLabelProps={{ shrink: true }} // Giữ label nổi khi có giá trị
+              <Controller
+                name='profile.joinDate'
+                control={control}
+                render={({ field }) => (
+                  <TextField {...field} fullWidth label='Ngày vào BTN' type='date' InputLabelProps={{ shrink: true }} />
+                )}
               />
             </Grid>
 
             <Grid item xs={12} className='flex gap-4 flex-wrap'>
-              <Button variant='contained' type='submit'>
+              <Button variant='contained' type='submit' disabled={!isDirty}>
                 Lưu
               </Button>
-              <Button variant='outlined' type='reset' color='secondary' onClick={() => setFormData(initialData)}>
+              <Button onClick={router.back} variant='outlined' color='secondary'>
                 Hủy
               </Button>
             </Grid>

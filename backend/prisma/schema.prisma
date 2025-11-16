@@ -1,22 +1,17 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
-// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
-
 generator client {
   provider = "prisma-client-js"
   output   = "../generated/prisma"
 }
 
 datasource db {
-  provider = "postgresql"
+  provider = "mysql"
   url      = env("DATABASE_URL")
 }
 
 enum Role {
   USER
   ADMIN
+  SUPER_ADMIN
 }
 
 enum PeriodType {
@@ -35,10 +30,11 @@ model User {
   createdAt DateTime  @default(now())
   updatedAt DateTime? @updatedAt
 
-  profile      Profile?
-  session      Session[]
-  scoreSummary ScoreSummary[]
-  score        Score[]
+  profile        Profile?
+  session        Session[]
+  scoreSummary   ScoreSummary[]
+  score          Score[]
+  passwordResets PasswordReset[]
 }
 
 model Profile {
@@ -47,13 +43,12 @@ model Profile {
   userId Int  @unique
 
   fullName    String
-  dateOfBirth DateTime
+  dateOfBirth DateTime?
   phone       String
   avatarUrl   String?
   joinDate    DateTime? @default(now())
-
-  address String
-  note    String?
+  address     String
+  note        String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -84,10 +79,20 @@ model ScoreSummary {
   id          Int        @id @default(autoincrement())
   userId      Int
   user        User       @relation(fields: [userId], references: [id])
-  periodType  PeriodType @default(WEEK) // WEEK | MONTH | QUARTER | YEAR
-  periodLabel String // "2025-W42", "2025-M10", "2025-Q1", "2025"
+  periodType  PeriodType @default(WEEK)
+  periodLabel String
   totalScore  Float
   rank        Int?
   createdAt   DateTime   @default(now())
   updatedAt   DateTime   @updatedAt
+}
+
+model PasswordReset {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  token     String   @unique
+  expiresAt DateTime
+  used      Boolean  @default(false)
+  user      User     @relation(fields: [userId], references: [id])
+  createdAt DateTime @default(now())
 }
